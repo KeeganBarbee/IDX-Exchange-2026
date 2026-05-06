@@ -42,6 +42,105 @@ print(f"Rows after     : {post_filter:,}")
 print(f"Rows removed   : {pre_filter - post_filter:,}")
  
 sold.reset_index(drop=True, inplace=True)
+
+date_columns = ["CloseDate", "PurchaseContractDate", "ListingContractDate", "ContractStatusChangeDate"]
+
+for col in date_columns:
+    if col in sold.columns:
+        sold[col] = pd.to_datetime(sold[col], errors="coerce")
+
+print("\nDate Checks")
+
+sold["listing_after_close_flag"] = (sold["ListingContractDate"] > sold["CloseDate"])
+sold["purchase_after_close_flag"] = (sold["PurchaseContractDate"] > sold["CloseDate"])
+sold["negative_timeline_flag"] = (sold["PurchaseContractDate"] < sold["ListingContractDate"])
+
+print(f"Listing after close: {sold['listing_after_close_flag'].sum()}")
+print(f"Purchase after close: {sold['purchase_after_close_flag'].sum()}")
+print(f"Negative timeline: {sold['negative_timeline_flag'].sum()}")
+
+print("\nGeographic Checks")
+
+sold["missing_coords_flag"] = (sold["Latitude"].isnull() | sold["Longitude"].isnull())
+sold["zero_coords_flag"] = ((sold["Latitude"] == 0) | (sold["Longitude"] == 0))
+sold["positive_longitude_flag"] = (sold["Longitude"] > 0)
+# California?
+sold["out_of_bounds_flag"] = ((sold["Latitude"] < 31.8) | (sold["Latitude"] > 42.2) | (sold["Longitude"] < -125.2) | (sold["Longitude"] > -114.8)
+)
+
+print(f"Missing coords: {sold['missing_coords_flag'].sum()}")
+print(f"Zero coords: {sold['zero_coords_flag'].sum()}")
+print(f"Positive longitude errors: {sold['positive_longitude_flag'].sum()}")
+print(f"Out-of-bounds coords: {sold['out_of_bounds_flag'].sum()}")
+
+repeats = [x for x in sold.columns if x.endswith(".1")]
+
+names = ["ListAgentFirstName", "ListAgentLastName", "ListAgentFullName","CoListAgentFirstName", "CoListAgentLastName", 
+        "BuyerAgentFirstName", "BuyerAgentLastName", "BuyerAgentMlsId","CoBuyerAgentFirstName", "ListAgentAOR", "BuyerAgentAOR", 
+        "ListOfficeName", "BuyerOfficeName", "CoListOfficeName", "BuyerOfficeAOR", "BuilderName"]
+
+drops = [x for x in repeats + names if x in sold.columns]
+
+sold.drop(columns=drops, inplace=True)
+
+print(f"\nDropped {len(drops)} columns")
+print(f"Columns remaining: {sold.shape[1]}")
+
+# Check Data Types
+numeric_cols = ["ClosePrice", "ListPrice", "OriginalListPrice", "LivingArea", "LotSizeAcres", "LotSizeArea", 
+            "LotSizeSquareFeet", "BedroomsTotal", "BathroomsTotalInteger", "DaysOnMarket", "YearBuilt", "TaxAnnualAmount", 
+            "AssociationFee", "FireplacesTotal", "ParkingTotal", "GarageSpaces", "CoveredSpaces", "Stories", "AboveGradeFinishedArea", 
+            "BelowGradeFinishedArea", "BuildingAreaTotal", "MainLevelBedrooms", "Latitude", "Longitude"]
+
+for col in numeric_cols:
+    if sold[col].dtype in ["float64", "int64"]:
+        print(f"  {col:<35} already numeric ({sold[col].dtype})")
+        continue
+    before_nulls = sold[col].isnull().sum()
+    sold[col] = pd.to_numeric(sold[col], errors="coerce")
+    new_nulls = sold[col].isnull().sum() - before_nulls
+    print(f"  {col:<35} converted to {sold[col].dtype}  |  {new_nulls} new nulls")
+
+# Check missing values
+missing_summary = sold.isnull().sum()
+
+# Dropping rows missing critical fields since they are necessary
+sold = sold.dropna(subset=['ClosePrice', 'LivingArea', 'Latitude', 'Longitude'])
+
+print("\nNumeric Validation")
+
+before_rows = len(sold)
+
+# Flagging
+sold["invalid_closeprice_flag"] = sold["ClosePrice"] <= 0
+sold["invalid_livingarea_flag"] = sold["LivingArea"] <= 0
+sold["invalid_dom_flag"] = sold["DaysOnMarket"] < 0
+sold["invalid_bedrooms_flag"] = sold["BedroomsTotal"] < 0
+sold["invalid_bathrooms_flag"] = sold["BathroomsTotalInteger"] < 0
+
+# Combine all invalids
+invalid_mask = ((sold["ClosePrice"] <= 0) | (sold["LivingArea"] <= 0) | (sold["DaysOnMarket"] < 0) | (sold["BedroomsTotal"] < 0) | (sold["BathroomsTotalInteger"] < 0))
+
+print(f"Invalid rows detected: {invalid_mask.sum()}")
+
+# Removing
+sold = sold[~invalid_mask].copy()
+
+after_rows = len(sold)
+print(f"Rows before cleaning: {before_rows}")
+print(f"Rows after cleaning : {after_rows}")
+print(f"Rows removed        : {before_rows - after_rows}")
+
+print("\n Total Data Sumamry for Weeks 4-5")
+print(f"Final rows: {len(sold)}")
+print("\nData types:")
+print(sold.dtypes)
+print("\nDate flag summary:")
+print(sold[["listing_after_close_flag", "purchase_after_close_flag", "negative_timeline_flag"]].sum())
+print("\nGeographic flag summary:")
+print(sold[["missing_coords_flag", "zero_coords_flag", "positive_longitude_flag", "out_of_bounds_flag"]].sum())
+
+
 # Missing Value Analysis 
 null_counts  = sold.isnull().sum()
 null_pct     = (null_counts / len(sold) * 100).round(2)

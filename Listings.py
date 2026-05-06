@@ -24,6 +24,39 @@ other_count       = len(listed) - residential_count
 print(f"\nResidential share : {residential_count:,}  ({residential_count/len(listed)*100:.1f}%)")
 print(f"Other share       : {other_count:,}  ({other_count/len(listed)*100:.1f}%)")
  
+date_columns = ["CloseDate", "PurchaseContractDate", "ListingContractDate", "ContractStatusChangeDate"]
+
+for col in date_columns:
+    if col in listed.columns:
+        listed[col] = pd.to_datetime(listed[col], errors="coerce")
+
+repeats = [x for x in listed.columns if x.endswith(".1")]
+
+names = ["ListAgentFirstName", "ListAgentLastName", "ListAgentFullName",  "CoListAgentFirstName", "CoListAgentLastName",
+    "BuyerAgentFirstName", "BuyerAgentLastName", "BuyerAgentMlsId", "CoBuyerAgentFirstName", "ListAgentAOR", "BuyerAgentAOR",
+    "ListOfficeName", "BuyerOfficeName", "CoListOfficeName", "BuyerOfficeAOR", "BuilderName",]
+
+drops = [x for x in repeats + names if x in listed.columns]
+
+listed.drop(columns=drops, inplace=True)
+
+print(f"\nDropped {len(drops)} columns")
+print(f"Columns remaining: {listed.shape[1]}")
+
+# Check Data Types
+numeric_cols = ["ClosePrice", "ListPrice", "OriginalListPrice", "LivingArea", "LotSizeAcres", "LotSizeArea", 
+            "LotSizeSquareFeet", "BedroomsTotal", "BathroomsTotalInteger", "DaysOnMarket", "YearBuilt", "TaxAnnualAmount", 
+            "AssociationFee", "FireplacesTotal", "ParkingTotal", "GarageSpaces", "CoveredSpaces", "Stories", "AboveGradeFinishedArea", 
+            "BelowGradeFinishedArea", "BuildingAreaTotal", "MainLevelBedrooms", "Latitude", "Longitude"]
+
+for col in numeric_cols:
+    if listed[col].dtype in ["float64", "int64"]:
+        print(f"  {col:<35} already numeric ({listed[col].dtype})")
+        continue
+    before_nulls = listed[col].isnull().sum()
+    listed[col] = pd.to_numeric(listed[col], errors="coerce")
+    new_nulls = listed[col].isnull().sum() - before_nulls
+    print(f"  {col:<35} converted to {listed[col].dtype}  |  {new_nulls} new nulls")
 # Filter to Residential 
 pre    = len(listed)
 listed = listed[listed["PropertyType"] == "Residential"].copy()
@@ -35,9 +68,6 @@ print(f"After  : {post:,} rows")
 print(f"Removed: {pre - post:,} rows")
  
 # Missing Value Analysis 
-print("\n" + "=" * 60)
-print("NULL COUNT SUMMARY (post-filter)")
-print("=" * 60)
 null_counts  = listed.isnull().sum()
 null_pct     = (null_counts / len(listed) * 100).round(2)
 null_summary = pd.DataFrame({
